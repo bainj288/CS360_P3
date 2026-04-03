@@ -113,22 +113,6 @@ int main(int argc, char* argv[])
 
             pthread_join(outputThread, nullptr);
 
-            /*
-            pthread_t fibThread;
-            pthread_t collatzThread;
-            pthread_t outputThread;
-
-
-            pthread_create(&oddThread, nullptr, threadOdd, nullptr);
-            pthread_create(&fibThread, nullptr, threadFib, nullptr);
-            pthread_create(&collatzThread, nullptr, threadCollatz, nullptr);
-            pthread_create(&outputThread, nullptr, threadOutput, nullptr);
-
-            pthread_join(inputThread, nullptr);
-            pthread_join(oddThread, nullptr);
-            pthread_join(fibThread, nullptr);
-            pthread_join(collatzThread, nullptr);
-            pthread_join(outputThread, nullptr); */
         }
         
     }
@@ -243,7 +227,7 @@ void* threadOdd(void* nothing)
             // mark phase as done and wake all the fib threads
             if(oddThreadsDone == numberThreads)
             {
-                
+
                 oddThreadFinished = true;
 
                 pthread_mutex_lock(&mutexTwo);
@@ -273,32 +257,6 @@ void* threadOdd(void* nothing)
             }
         }
 
-
-        /*
-        if(!queueOne.empty())
-        {
-            unsigned long long number = queueOne.front(); 
-            queueOne.pop();
-            pthread_mutex_unlock(&mutexOne);
-            if(isOdd(number))
-            {
-                pthread_mutex_lock(&mutexTwo);
-                queueTwo.push(number);
-                pthread_mutex_unlock(&mutexTwo);
-
-            }
-    
-        }
-        //Spin lock
-        else
-        {
-            pthread_mutex_unlock(&mutexOne);
-            if(inputFinished)
-            {
-                done = true;
-            }
-
-        }   */
     }
 
     return nullptr;
@@ -354,29 +312,7 @@ void* threadFib(void* nothing)
                 pthread_mutex_unlock(&mutexThree);
             }
         }
-        /*
-        if(!queueTwo.empty())
-        {
-            unsigned long long number = queueTwo.front();
-            queueTwo.pop();
-            pthread_mutex_unlock(&mutexTwo);
-
-            if(isFib(number))
-            {
-                pthread_mutex_lock(&mutexThree);
-                queueThree.push(number);
-                pthread_mutex_unlock(&mutexThree);
-            }
-        }
-        else
-        {
-            pthread_mutex_unlock(&mutexTwo);
-
-            if(oddThreadFinished)
-            {
-                done = true;
-            }
-        }*/
+        
     }
     return nullptr;
 }
@@ -436,37 +372,7 @@ void* threadCollatz(void* nothing)
                 pthread_mutex_unlock(&mutexFour);
             }
         }
-        /*
-        // if there are numbers to work with after fib thread
-        if(!queueThree.empty())
-        {
-            unsigned long long number = queueThree.front();
-            queueThree.pop();
-
-            pthread_mutex_unlock(&mutexThree);
-
-            // check whether number reaches 40
-            // this uses the Collatz procedure
-            if(reachesForty(number))
-            {
-                // if it passes then we want to move it to the output queue
-                pthread_mutex_lock(&mutexFour);
-                queueFour.push(number);
-                pthread_mutex_unlock(&mutexFour);
-            }
-        }
-        // fib queue is empty
-        else
-        {
-            pthread_mutex_unlock(&mutexThree);
-
-            // if the fib thread is finished and fib queue is empty
-            // then this function has no work to do
-            if(fibThreadFinished)
-            {
-                done = true;
-            }
-        }*/
+        
     }
 
     return nullptr;
@@ -503,28 +409,7 @@ void* threadOutput(void* nothing)
             // print the number
             cout << number << endl;
         }
-        /*
-        if(!queueFour.empty())
-        {
-            unsigned long long number = queueFour.front();
-            queueFour.pop();
-
-            pthread_mutex_unlock(&mutexFour);
-
-            // print the number
-            cout << number << endl;
-        }
-        else
-        {
-            pthread_mutex_unlock(&mutexFour);
-
-            // if the collatz is finished and the queue was empty
-            // there is not printing to do and we exit
-            if(collatzThreadFinished)
-            {
-                done = true;
-            }
-        }*/
+        
     }
 
     return nullptr;
