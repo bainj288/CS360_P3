@@ -1,6 +1,7 @@
 #include <iostream>
 #include <queue>
 #include <pthread.h>
+#include <list>
 using namespace std;
 
 //Prototypes
@@ -25,11 +26,26 @@ bool oddThreadFinished;
 bool fibThreadFinished;
 bool collatzThreadFinished;
 
+// count how many threads finish in each phase
+int oddThreadsDone = 0;
+int fibThreadsDone = 0;
+int collatzThreadsDone = 0;
+
+// count of threads per work queue
+int numberThreads = 0;
+
 //Threads
 pthread_mutex_t mutexOne = PTHREAD_MUTEX_INITIALIZER; 
 pthread_mutex_t mutexTwo = PTHREAD_MUTEX_INITIALIZER; 
 pthread_mutex_t mutexThree = PTHREAD_MUTEX_INITIALIZER; 
 pthread_mutex_t mutexFour = PTHREAD_MUTEX_INITIALIZER; 
+
+// condition variables
+pthread_cond_t conditionOne = PTHREAD_COND_INITIALIZER;
+pthread_cond_t conditionTwo = PTHREAD_COND_INITIALIZER;
+pthread_cond_t conditionThree = PTHREAD_COND_INITIALIZER;
+pthread_cond_t conditionFour = PTHREAD_COND_INITIALIZER;
+
 
 int main(int argc, char* argv[])
 {
@@ -43,22 +59,66 @@ int main(int argc, char* argv[])
     }
     else
     {
-        int numberThreads = atoi(argv[1]);
+        numberThreads = atoi(argv[1]);
 
-        if(numberThreads != 1)
+        if(numberThreads <= 0)
         {
-            cerr << "Milestone 1 only requires one thread" << endl;
+            cerr << "Number of threads must be greater than 0" << endl;
             exitNumber = 1;
         }
         else
         {
             pthread_t inputThread;
-            pthread_t oddThread;
+            pthread_t outputThread;
+
+            list<pthread_t> oddThreads;
+            list<pthread_t> fibThreads;
+            list<pthread_t> collatzThreads;
+
+            pthread_create(&inputThread, nullptr, threadInput, nullptr);
+
+            // create the threads
+            for(int i = 0; i < numberThreads; i++)
+            {
+                pthread_t t1, t2, t3;
+
+                pthread_create(&t1, nullptr, threadOdd, nullptr);
+                oddThreads.push_back(t1);
+
+                pthread_create(&t2, nullptr, threadFib, nullptr);
+                fibThreads.push_back(t2);
+
+                pthread_create(&t3, nullptr, threadCollatz, nullptr);
+                collatzThreads.push_back(t3);
+            }
+
+            pthread_create(&outputThread, nullptr, threadOutput, nullptr);
+
+            pthread_join(inputThread, nullptr);
+
+            for(const auto& t : oddThreads)
+            {
+                pthread_join(t, nullptr);
+            }
+
+            for(const auto& t : fibThreads)
+            {
+                pthread_join(t, nullptr);
+            }
+
+            for(const auto& t : collatzThreads)
+            {
+                pthread_join(t, nullptr);
+            }
+
+            pthread_join(outputThread, nullptr);
+
+            /*
             pthread_t fibThread;
             pthread_t collatzThread;
             pthread_t outputThread;
 
-            pthread_create(&inputThread, nullptr, threadInput, nullptr);
+
             pthread_create(&oddThread, nullptr, threadOdd, nullptr);
             pthread_create(&fibThread, nullptr, threadFib, nullptr);
             pthread_create(&collatzThread, nullptr, threadCollatz, nullptr);
@@ -68,7 +128,7 @@ int main(int argc, char* argv[])
             pthread_join(oddThread, nullptr);
             pthread_join(fibThread, nullptr);
             pthread_join(collatzThread, nullptr);
-            pthread_join(outputThread, nullptr);
+            pthread_join(outputThread, nullptr); */
         }
         
     }
@@ -147,11 +207,17 @@ void* threadInput(void* nothing)
         {
             pthread_mutex_lock(&mutexOne);
             queueOne.push(number);
+            pthread_cond_signal(&conditionOne);
             pthread_mutex_unlock(&mutexOne);
 
         }       
     }
+
+    pthread_mutex_lock(&mutexOne);
     inputFinished = true; 
+    pthread_cond_broadcast(&conditionOne);
+    pthread_mutex_unlock(&mutexOne);
+
     return nullptr;
 }
 
@@ -161,6 +227,54 @@ void* threadOdd(void* nothing)
     while(!done)
     {
         pthread_mutex_lock(&mutexOne);
+
+        // wait while there is nothing to do and input is not done
+        while(queueOne.empty() && !inputFinished)
+        {
+            pthread_cond_wait(&conditionOne, &mutexOne);
+        }
+
+        // if queue is empty and input thread is done, we can proceed
+        if(queueOne.empty() && inputFinished)
+        {
+            oddThreadsDone++;
+
+            // if this is the last thread that needs to finish
+            // mark phase as done and wake all the fib threads
+            if(oddThreadsDone == numberThreads)
+            {
+                
+                oddThreadFinished = true;
+
+                pthread_mutex_lock(&mutexTwo);
+                pthread_cond_broadcast(&conditionTwo);
+                pthread_mutex_unlock(&mutexTwo);
+            }
+
+            pthread_mutex_unlock(&mutexOne);
+            done = true;
+        }
+        else
+        {
+            // remove one item from queueOne
+            unsigned long long number = queueOne.front(); 
+            queueOne.pop();
+            pthread_mutex_unlock(&mutexOne);
+
+            if(isOdd(number))
+            {
+                pthread_mutex_lock(&mutexTwo);
+                queueTwo.push(number);
+
+                // wake up one fib thread 
+                pthread_cond_signal(&conditionTwo);
+                pthread_mutex_unlock(&mutexTwo);
+
+            }
+        }
+
+
+        /*
         if(!queueOne.empty())
         {
             unsigned long long number = queueOne.front(); 
@@ -184,9 +298,9 @@ void* threadOdd(void* nothing)
                 done = true;
             }
 
-        }   
+        }   */
     }
-    oddThreadFinished = true;
+
     return nullptr;
 } 
 
@@ -198,6 +312,49 @@ void* threadFib(void* nothing)
     {
         pthread_mutex_lock(&mutexTwo);
 
+        // wait while there is nothing to do and the odd phase may still have work
+        while(queueTwo.empty() && !oddThreadFinished)
+        {
+            pthread_cond_wait(&conditionTwo, &mutexTwo);
+        }
+
+        // if queueTwo is empty and the odd phase is finished then fib thread can finish
+        if(queueTwo.empty() && oddThreadFinished)
+        {
+            fibThreadsDone++;
+
+            // if this is the last fib thread then fib phase is done
+            // wake all of the collatz threads
+            if(fibThreadsDone == numberThreads)
+            {
+                fibThreadFinished = true;
+
+                pthread_mutex_lock(&mutexThree);
+                pthread_cond_broadcast(&conditionThree);
+                pthread_mutex_unlock(&mutexThree);
+            }
+
+            pthread_mutex_unlock(&mutexTwo);
+            done = true;
+        }
+        else
+        {
+            // remove one item from queueTwo
+            unsigned long long number = queueTwo.front();
+            queueTwo.pop();
+            pthread_mutex_unlock(&mutexTwo);
+
+            if(isFib(number))
+            {
+                pthread_mutex_lock(&mutexThree);
+                queueThree.push(number);
+
+                // wake a collatz thread because it has work to do
+                pthread_cond_signal(&conditionThree);
+                pthread_mutex_unlock(&mutexThree);
+            }
+        }
+        /*
         if(!queueTwo.empty())
         {
             unsigned long long number = queueTwo.front();
@@ -219,10 +376,8 @@ void* threadFib(void* nothing)
             {
                 done = true;
             }
-        }
+        }*/
     }
-
-    fibThreadFinished = true;
     return nullptr;
 }
 
@@ -234,6 +389,54 @@ void* threadCollatz(void* nothing)
     {
         pthread_mutex_lock(&mutexThree);
 
+
+        // wait while there is nothing to do and the fib phase is not done
+        while(queueThree.empty() && !fibThreadFinished)
+        {
+            pthread_cond_wait(&conditionThree, &mutexThree);
+        }
+
+        // if queueThree is empty and fib phase is done then this thread can finish
+        if(queueThree.empty() && fibThreadFinished)
+        {
+            collatzThreadsDone++;
+
+            // if this is the last collatz thread mark phase as done
+            // wake output thread
+            if(collatzThreadsDone == numberThreads)
+            {
+                collatzThreadFinished = true; 
+
+                pthread_mutex_lock(&mutexFour);
+                pthread_cond_broadcast(&conditionFour);
+                pthread_mutex_unlock(&mutexFour);
+            }
+
+            pthread_mutex_unlock(&mutexThree);
+            done = true;
+        }
+        else
+        {
+            // remove one item from queueThree
+            unsigned long long number = queueThree.front();
+            queueThree.pop();
+
+            pthread_mutex_unlock(&mutexThree);
+
+            // check whether number reaches 40
+            // this uses the Collatz procedure
+            if(reachesForty(number))
+            {
+                // if it passes then we want to move it to the output queue
+                pthread_mutex_lock(&mutexFour);
+                queueFour.push(number);
+
+                // wake output thread because there is something to print
+                pthread_cond_signal(&conditionFour);
+                pthread_mutex_unlock(&mutexFour);
+            }
+        }
+        /*
         // if there are numbers to work with after fib thread
         if(!queueThree.empty())
         {
@@ -263,9 +466,8 @@ void* threadCollatz(void* nothing)
             {
                 done = true;
             }
-        }
+        }*/
     }
-    collatzThreadFinished = true;
 
     return nullptr;
 }
@@ -278,6 +480,30 @@ void* threadOutput(void* nothing)
     {
         pthread_mutex_lock(&mutexFour);
 
+        // wait while there is nothing to print and collatz phase is not done
+        while(queueFour.empty() && !collatzThreadFinished)
+        {
+            pthread_cond_wait(&conditionFour, &mutexFour);
+        }
+
+        // if queueFour is empty and collatz phase is done then output thread can finish
+        if(queueFour.empty() && collatzThreadFinished)
+        {
+            pthread_mutex_unlock(&mutexFour);
+            done = true;
+        }
+        else
+        {
+            // remove one number and print it
+            unsigned long long number = queueFour.front();
+            queueFour.pop();
+
+            pthread_mutex_unlock(&mutexFour);
+
+            // print the number
+            cout << number << endl;
+        }
+        /*
         if(!queueFour.empty())
         {
             unsigned long long number = queueFour.front();
@@ -298,7 +524,7 @@ void* threadOutput(void* nothing)
             {
                 done = true;
             }
-        }
+        }*/
     }
 
     return nullptr;
