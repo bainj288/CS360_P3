@@ -21,6 +21,7 @@ queue<unsigned long long> queueTwo;
 queue<unsigned long long> queueThree;
 queue<unsigned long long> queueFour;
 
+// flags to indicate phase completion 
 bool inputFinished;
 bool oddThreadFinished;  
 bool fibThreadFinished;
@@ -71,10 +72,12 @@ int main(int argc, char* argv[])
             pthread_t inputThread;
             pthread_t outputThread;
 
+            // lists to store the worker threads
             list<pthread_t> oddThreads;
             list<pthread_t> fibThreads;
             list<pthread_t> collatzThreads;
 
+            // start the input thread
             pthread_create(&inputThread, nullptr, threadInput, nullptr);
 
             // create the threads
@@ -92,8 +95,10 @@ int main(int argc, char* argv[])
                 collatzThreads.push_back(t3);
             }
 
+            // start output thread
             pthread_create(&outputThread, nullptr, threadOutput, nullptr);
 
+            // wait for all threads to finish with join
             pthread_join(inputThread, nullptr);
 
             for(const auto& t : oddThreads)
@@ -120,11 +125,13 @@ int main(int argc, char* argv[])
     return exitNumber;
 }
 
+// helper to check if number is odd
 bool isOdd(unsigned long long number)
 {
     return (number % 2 == 1); 
 }
 
+// helper to check if number is Fibonacci
 bool isFib(unsigned long long number)
 {
     bool result = false;
@@ -138,6 +145,7 @@ bool isFib(unsigned long long number)
         unsigned long long fibOne = 1;
         unsigned long long fibTwo = 1;
 
+        // generate fibonacci numbers until >= number
         while(fibTwo < number)
         {
             unsigned long long fibNext = fibOne + fibTwo; 
@@ -152,6 +160,7 @@ bool isFib(unsigned long long number)
     return result; 
 }
 
+// collatz checker if it reaches 40
 bool reachesForty(unsigned long long number)
 {
     bool result = false; 
@@ -177,6 +186,7 @@ bool reachesForty(unsigned long long number)
     return result; 
 }
 
+// input thread that reads numbers and pushes to queueOne
 void* threadInput(void* nothing)
 {
     unsigned long long number; 
@@ -191,12 +201,15 @@ void* threadInput(void* nothing)
         {
             pthread_mutex_lock(&mutexOne);
             queueOne.push(number);
+
+            // wake one odd thread
             pthread_cond_signal(&conditionOne);
             pthread_mutex_unlock(&mutexOne);
 
         }       
     }
 
+    // mark input as finished and wake all the other threads
     pthread_mutex_lock(&mutexOne);
     inputFinished = true; 
     pthread_cond_broadcast(&conditionOne);
@@ -205,6 +218,7 @@ void* threadInput(void* nothing)
     return nullptr;
 }
 
+// odd thread that filters odd numbers into queueTwo
 void* threadOdd(void* nothing)
 {
     bool done = false; 
@@ -262,6 +276,7 @@ void* threadOdd(void* nothing)
     return nullptr;
 } 
 
+// fib thread that filters fib numbers into queueThree
 void* threadFib(void* nothing)
 {
     bool done = false;
@@ -317,6 +332,7 @@ void* threadFib(void* nothing)
     return nullptr;
 }
 
+// collatz thread to filter numbers that reach 40 into queueFour
 void* threadCollatz(void* nothing)
 {
     bool done = false;
@@ -378,6 +394,7 @@ void* threadCollatz(void* nothing)
     return nullptr;
 }
 
+// output thread to print the final results 
 void* threadOutput(void* nothing)
 {
     bool done = false;
